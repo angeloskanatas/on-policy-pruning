@@ -76,6 +76,10 @@ def main(args):
     elif all_args.algorithm_name == "ippo":
         print("u are choosing to use ippo, we set use_centralized_V to be False")
         all_args.use_centralized_V = False
+    elif all_args.algorithm_name == "happo" or all_args.algorithm_name == "hatrpo":
+        print("using", all_args.algorithm_name, 'with recurrent network')
+        all_args.use_recurrent_policy = True
+        all_args.use_naive_recurrent_policy = False
     else:
         raise NotImplementedError
 
@@ -104,10 +108,13 @@ def main(args):
     # wandb
     if all_args.use_wandb:
         run = wandb.init(config=all_args,
-                         project=all_args.env_name,
+                         project=all_args.env_name, # TODO: change this for more exps
                          entity=all_args.user_name,
                          notes=socket.gethostname(),
                          name=str(all_args.algorithm_name) + "_" +
+                         str(all_args.pruning_method) + "_" +
+                         (str(all_args.schedule_type) + "_" if hasattr(all_args, 'schedule_type') and all_args.pruning_method != "none" else "") +
+                         ("pi" + str(all_args.prune_interval) + "_" if hasattr(all_args, 'prune_interval') and all_args.pruning_method != "none" else "") +
                          str(all_args.experiment_name) +
                          "_seed" + str(all_args.seed),
                          group=all_args.scenario_name,

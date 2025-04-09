@@ -1,4 +1,3 @@
-    
 import time
 import wandb
 import os
@@ -8,6 +7,7 @@ import torch
 
 from onpolicy.utils.util import update_linear_schedule
 from onpolicy.runner.shared.base_runner import Runner
+from onpolicy.utils.pruning_utils import compute_sparsity, apply_gradual_schedule_pruning, get_pruning_schedule, HarmonicSparsityScheduler
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -17,6 +17,36 @@ class HanabiRunner(Runner):
     def __init__(self, config):
         super(HanabiRunner, self).__init__(config)
         self.true_total_num_steps = 0
+
+        # pruning parameters
+        self.pruning_method = self.all_args.pruning_method if hasattr(self.all_args, 'pruning_method') else 'none'
+        self.schedule_type = self.all_args.schedule_type if hasattr(self.all_args, 'schedule_type') else 'linear'
+        self.initial_sparsity = self.all_args.initial_sparsity if hasattr(self.all_args, 'initial_sparsity') else 0.0
+        self.final_sparsity = self.all_args.final_sparsity if hasattr(self.all_args, 'final_sparsity') else 0.95
+        self.warmup_episodes = self.all_args.warmup_episodes if hasattr(self.all_args, 'warmup_episodes') else 0
+        self.prune_interval = self.all_args.prune_interval if hasattr(self.all_args, 'prune_interval') else 5
+        self.harmonic_A0 = self.all_args.harmonic_A0 if hasattr(self.all_args, 'harmonic_A0') else 0.1
+        self.harmonic_lambda_decay = self.all_args.harmonic_lambda_decay if hasattr(self.all_args, 'harmonic_lambda_decay') else 0.0
+        self.harmonic_T0 = self.all_args.harmonic_T0 if hasattr(self.all_args, 'harmonic_T0') else 100
+        self.harmonic_T_increase_rate = self.all_args.harmonic_T_increase_rate if hasattr(self.all_args, 'harmonic_T_increase_rate') else 0.0
+        self.harmonic_base_schedule_type = self.all_args.harmonic_base_schedule_type if hasattr(self.all_args, 'harmonic_base_schedule_type') else 'linear'
+
+        # initialize harmonic pruning scheduler (only if needed)
+        if self.schedule_type == "harmonic":
+            self.harmonic_scheduler = HarmonicSparsityScheduler(
+                total_episodes=int(self.num_env_steps) // self.episode_length // self.n_rollout_threads,
+                warmup_episodes=self.warmup_episodes,
+                initial_sparsity=self.initial_sparsity,
+                final_sparsity=self.final_sparsity,
+                A0=self.harmonic_A0,
+                lambda_decay=self.harmonic_lambda_decay,
+                T0=self.harmonic_T0,
+                T_increase_rate=self.harmonic_T_increase_rate,
+                base_schedule=self.harmonic_base_schedule_type,
+                lock_progress_threshold=0.9
+            )
+        else:
+            self.harmonic_scheduler = None
     
     def run(self):
         self.turn_obs = np.zeros((self.n_rollout_threads,*self.buffer.obs.shape[2:]), dtype=np.float32)

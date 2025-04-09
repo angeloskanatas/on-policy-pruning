@@ -8,6 +8,7 @@ import torch
 
 from onpolicy.utils.util import update_linear_schedule
 from onpolicy.runner.separated.base_runner import Runner
+from onpolicy.utils.pruning_utils import compute_sparsity, apply_gradual_schedule_pruning, get_pruning_schedule, HarmonicSparsityScheduler
 import imageio
 
 def _t2n(x):
@@ -16,7 +17,37 @@ def _t2n(x):
 class MPERunner(Runner):
     def __init__(self, config):
         super(MPERunner, self).__init__(config)
-       
+        
+         # pruning parameters
+        self.pruning_method = self.all_args.pruning_method if hasattr(self.all_args, 'pruning_method') else 'none'
+        self.schedule_type = self.all_args.schedule_type if hasattr(self.all_args, 'schedule_type') else 'linear'
+        self.initial_sparsity = self.all_args.initial_sparsity if hasattr(self.all_args, 'initial_sparsity') else 0.0
+        self.final_sparsity = self.all_args.final_sparsity if hasattr(self.all_args, 'final_sparsity') else 0.95
+        self.warmup_episodes = self.all_args.warmup_episodes if hasattr(self.all_args, 'warmup_episodes') else 0
+        self.prune_interval = self.all_args.prune_interval if hasattr(self.all_args, 'prune_interval') else 5
+        self.harmonic_A0 = self.all_args.harmonic_A0 if hasattr(self.all_args, 'harmonic_A0') else 0.1
+        self.harmonic_lambda_decay = self.all_args.harmonic_lambda_decay if hasattr(self.all_args, 'harmonic_lambda_decay') else 0.0
+        self.harmonic_T0 = self.all_args.harmonic_T0 if hasattr(self.all_args, 'harmonic_T0') else 100
+        self.harmonic_T_increase_rate = self.all_args.harmonic_T_increase_rate if hasattr(self.all_args, 'harmonic_T_increase_rate') else 0.0
+        self.harmonic_base_schedule_type = self.all_args.harmonic_base_schedule_type if hasattr(self.all_args, 'harmonic_base_schedule_type') else 'linear'
+
+        # initialize harmonic pruning scheduler (only if needed)
+        if self.schedule_type == "harmonic":
+            self.harmonic_scheduler = HarmonicSparsityScheduler(
+                total_episodes=int(self.num_env_steps) // self.episode_length // self.n_rollout_threads,
+                warmup_episodes=self.warmup_episodes,
+                initial_sparsity=self.initial_sparsity,
+                final_sparsity=self.final_sparsity,
+                A0=self.harmonic_A0,
+                lambda_decay=self.harmonic_lambda_decay,
+                T0=self.harmonic_T0,
+                T_increase_rate=self.harmonic_T_increase_rate,
+                base_schedule=self.harmonic_base_schedule_type,
+                lock_progress_threshold=0.9
+            )
+        else:
+            self.harmonic_scheduler = None
+
     def run(self):
         self.warmup()   
 
@@ -40,16 +71,86 @@ class MPERunner(Runner):
                 # insert data into buffer
                 self.insert(data)
 
-            # compute return and update network
+            # compute return
             self.compute()
-            train_infos = self.train()
             
-            # post process
+            train_infos = {}
+
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
             
-            # save model
-            if (episode % self.save_interval == 0 or episode == episodes - 1):
-                self.save()
+            # apply pruning based on selected method and schedule
+            if self.pruning_method in ['gradual_schedule_l1', 'gradual_schedule_random']:
+                if episode % self.prune_interval == 0:
+                    current_sparsity = get_pruning_schedule(
+                        schedule_type=self.schedule_type,
+                        episode=episode,
+                        num_episodes=episodes,
+                        initial_sparsity=self.initial_sparsity,
+                        final_sparsity=self.final_sparsity,
+                        warmup_episodes=self.warmup_episodes,
+                        harmonic_scheduler=self.harmonic_scheduler
+                    )
+                    pruning_type = 'l1' if self.pruning_method == 'gradual_schedule_l1' else 'random'
+                    
+                    # apply pruning to each agent's actor
+                    for agent_id in range(self.num_agents):
+                        apply_gradual_schedule_pruning(self.policy[agent_id].actor, current_sparsity, pruning_type)
+                        
+                        # log sparsity for each agent
+                        if agent_id not in train_infos:
+                            train_infos[agent_id] = {}
+                        sparsity = compute_sparsity(self.policy[agent_id].actor)
+                        train_infos[agent_id]['actor_sparsity'] = sparsity
+                        print(f"Agent {agent_id} current actor sparsity: {sparsity:.2f}%")
+                    
+                    # save pruned model
+                    if (episode % self.save_interval == 0 or episode == episodes - 1):
+                        self.save()
+
+                    # # log information
+                    # if episode % self.log_interval == 0:
+                    #     end = time.time()
+                    #     print("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
+                    #             .format(self.all_args.scenario_name,
+                    #                     self.algorithm_name,
+                    #                     self.experiment_name,
+                    #                     episode,
+                    #                     episodes,
+                    #                     total_num_steps,
+                    #                     self.num_env_steps,
+                    #                     int(total_num_steps / (end - start))))
+
+                    #     if self.env_name == "MPE":
+                    #         env_infos = {}
+                    #         for agent_id in range(self.num_agents):
+                    #             idv_rews = []
+                    #             for info in infos:
+                    #                 if 'individual_reward' in info[agent_id].keys():
+                    #                     idv_rews.append(info[agent_id]['individual_reward'])
+                    #             agent_k = 'agent%i/individual_rewards' % agent_id
+                    #             env_infos[agent_k] = idv_rews
+
+                    #     train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
+                    #     print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
+                    #     self.log_train(train_infos, total_num_steps)
+                    #     self.log_env(env_infos, total_num_steps)
+
+                    # eval (pruned model)
+                    if episode % self.eval_interval == 0 and self.use_eval:
+                        self.eval(total_num_steps)
+            
+            train_stats = self.train()
+            for agent_id, stats in enumerate(train_stats):
+                if agent_id not in train_infos:
+                    train_infos[agent_id] = {}
+                train_infos[agent_id].update(stats)
+
+            # # post process
+            # total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+            
+            # # save model
+            # if (episode % self.save_interval == 0 or episode == episodes - 1):
+            #     self.save()
 
             # log information
             if episode % self.log_interval == 0:
@@ -75,9 +176,9 @@ class MPERunner(Runner):
                         train_infos[agent_id].update({"average_episode_rewards": np.mean(self.buffer[agent_id].rewards) * self.episode_length})
                 self.log_train(train_infos, total_num_steps)
 
-            # eval
-            if episode % self.eval_interval == 0 and self.use_eval:
-                self.eval(total_num_steps)
+            # # eval
+            # if episode % self.eval_interval == 0 and self.use_eval:
+            #     self.eval(total_num_steps)
 
     def warmup(self):
         # reset env
@@ -233,6 +334,10 @@ class MPERunner(Runner):
             eval_average_episode_rewards = np.mean(np.sum(eval_episode_rewards[:, :, agent_id], axis=0))
             eval_train_infos.append({'eval_average_episode_rewards': eval_average_episode_rewards})
             print("eval average episode rewards of agent%i: " % agent_id + str(eval_average_episode_rewards))
+            
+            # add sparsity to eval info for each agent
+            if self.pruning_method != 'none':
+                eval_train_infos[agent_id]['eval_actor_sparsity'] = compute_sparsity(self.policy[agent_id].actor)
 
         self.log_train(eval_train_infos, total_num_steps)  
 

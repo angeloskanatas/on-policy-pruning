@@ -66,12 +66,9 @@ class MPERunner(Runner):
                 # insert data into buffer
                 self.insert(data)
 
-            # compute return
+            # compute return and update network
             self.compute()
-
-            train_infos = {}
-
-            total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+            train_infos = self.train()
 
             # apply pruning based on selected method and schedule
             if self.pruning_method in ['gradual_schedule_l1', 'gradual_schedule_random']:
@@ -92,52 +89,13 @@ class MPERunner(Runner):
                     sparsity = compute_sparsity(self.policy.actor)
                     train_infos['actor_sparsity'] = sparsity
                     print(f"Current actor sparsity: {sparsity:.2f}%")
-
-                    # save pruned model
-                    if (episode % self.save_interval == 0 or episode == episodes - 1):
-                        self.save()
-
-                    # # log information
-                    # if episode % self.log_interval == 0:
-                    #     end = time.time()
-                    #     print("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
-                    #             .format(self.all_args.scenario_name,
-                    #                     self.algorithm_name,
-                    #                     self.experiment_name,
-                    #                     episode,
-                    #                     episodes,
-                    #                     total_num_steps,
-                    #                     self.num_env_steps,
-                    #                     int(total_num_steps / (end - start))))
-
-                    #     if self.env_name == "MPE":
-                    #         env_infos = {}
-                    #         for agent_id in range(self.num_agents):
-                    #             idv_rews = []
-                    #             for info in infos:
-                    #                 if 'individual_reward' in info[agent_id].keys():
-                    #                     idv_rews.append(info[agent_id]['individual_reward'])
-                    #             agent_k = 'agent%i/individual_rewards' % agent_id
-                    #             env_infos[agent_k] = idv_rews
-
-                    #     train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
-                    #     print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
-                    #     self.log_train(train_infos, total_num_steps)
-                    #     self.log_env(env_infos, total_num_steps)
-
-                    # eval (pruned model)
-                    if episode % self.eval_interval == 0 and self.use_eval:
-                        self.eval(total_num_steps)
-
-            train_stats = self.train()
-            train_infos.update(train_stats)
             
-            # # post process
-            # total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+            # post process
+            total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
             
-            # # save model
-            # if (episode % self.save_interval == 0 or episode == episodes - 1):
-            #     self.save()
+            # save model
+            if (episode % self.save_interval == 0 or episode == episodes - 1):
+                self.save()
 
             # log information
             if episode % self.log_interval == 0:
@@ -167,9 +125,9 @@ class MPERunner(Runner):
                 self.log_train(train_infos, total_num_steps)
                 self.log_env(env_infos, total_num_steps)
 
-            # # eval
-            # if episode % self.eval_interval == 0 and self.use_eval:
-            #     self.eval(total_num_steps)
+            # eval
+            if episode % self.eval_interval == 0 and self.use_eval:
+                self.eval(total_num_steps)
 
     def warmup(self):
         # reset env

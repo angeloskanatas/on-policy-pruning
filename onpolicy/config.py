@@ -196,7 +196,7 @@ def get_config():
                         help="Dimension of hidden layers for actor/critic networks")
     parser.add_argument("--use_stacked_frames", action='store_true',
                         default=False, help="Whether to use stacked_frames")
-    parser.add_argument("--hidden_size", type=int, default=64,
+    parser.add_argument("--hidden_size", type=int, default=128,
                         help="Dimension of hidden layers for actor/critic networks") 
     parser.add_argument("--layer_N", type=int, default=1,
                         help="Number of layers for actor/critic networks")
@@ -276,7 +276,7 @@ def get_config():
     parser.add_argument("--save_interval", type=int, default=1, help="time duration between contiunous twice models saving.")
 
     # log parameters
-    parser.add_argument("--log_interval", type=int, default=5, help="time duration between contiunous twice log printing.")
+    parser.add_argument("--log_interval", type=int, default=5, help="time duration between contiunous twice log printing.") # NOTE: set as pruning interval
 
     # eval parameters
     parser.add_argument("--use_eval", action='store_true', default=False, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
@@ -304,4 +304,30 @@ def get_config():
     parser.add_argument("--train_maps", type=str, nargs='+', default=None)
     parser.add_argument("--eval_maps", type=str, nargs='+', default=None)
     
+    # gradual pruning parameters
+    parser.add_argument("--pruning_method", type=str, default='none',
+                      choices=['none', 'gradual_schedule_l1', 'gradual_schedule_random'],
+                      help="pruning method to use")
+    parser.add_argument("--schedule_type", type=str, default='linear',
+                      choices=['linear', 'cosine', 'polynomial', 'exponential', 'cyclical', 'step', 'harmonic'], # TODO: remove cyclical (special case of 'harmonic')
+                      help="type of pruning schedule to use")
+    parser.add_argument("--initial_sparsity", type=float, default=0.0,
+                      help="initial sparsity level (0-1)")
+    parser.add_argument("--final_sparsity", type=float, default=0.95,
+                      help="final sparsity level (0-1)")
+    parser.add_argument("--warmup_episodes", type=int, default=0,
+                      help="number of warmup episodes before pruning")
+    parser.add_argument("--prune_interval", type=int, default=5,
+                      help="interval for pruning (in episodes)")
+    parser.add_argument("--harmonic_base_schedule_type", type=str, default='linear',
+                        choices=['linear', 'cosine', 'polynomial', 'exponential', 'step'],
+                        help="base schedule used for harmonic sparsity scheduler")
+    parser.add_argument("--harmonic_A0", type=float, default=0.1,
+                        help="initial amplitude of harmonic oscillation")
+    parser.add_argument("--harmonic_lambda_decay", type=float, default=0.0,
+                        help="decay rate for harmonic amplitude")
+    parser.add_argument("--harmonic_T0", type=float, default=100,
+                        help="initial period of harmonic oscillation")
+    parser.add_argument("--harmonic_T_increase_rate", type=float, default=0.0,
+                        help="rate at which harmonic period increases over time")
     return parser
