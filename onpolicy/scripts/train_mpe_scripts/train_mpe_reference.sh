@@ -76,7 +76,7 @@ for seed in $(seq $seed_start $(($seed_start + $num_seeds - 1))); do
     --ppo_epoch 15 --gain 0.01 --lr 7e-4 --critic_lr 7e-4 \
     --wandb_name "akanatas" --user_name "MARL-pruning" --share_policy \
     --pruning_method ${pruning_method} --schedule_type ${schedule_type} \
-    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 10 \
+    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5 \
     --harmonic_base_schedule_type ${harmonic_base_schedule_type} \
     --harmonic_A0 ${harmonic_A0} \
     --harmonic_lambda_decay ${harmonic_lambda_decay} \

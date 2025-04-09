@@ -139,6 +139,7 @@ class MPERunner(Runner):
                     if episode % self.eval_interval == 0 and self.use_eval:
                         self.eval(total_num_steps)
             
+            # update network
             train_stats = self.train()
             for agent_id, stats in enumerate(train_stats):
                 if agent_id not in train_infos:

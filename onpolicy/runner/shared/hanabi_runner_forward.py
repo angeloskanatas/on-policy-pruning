@@ -92,9 +92,44 @@ class HanabiRunner(Runner):
                     # 2. last step rewards
                     self.buffer.rewards[-1] = self.turn_rewards.copy()
 
-                    # compute return and update network
+                    # compute return
                     self.compute()
-                    train_infos = self.train()
+
+                    train_infos = {}
+
+                    total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+
+                    # apply pruning based on selected method and schedule
+                    if self.pruning_method in ['gradual_schedule_l1', 'gradual_schedule_random']:
+                        if episode % self.prune_interval == 0:
+                            current_sparsity = get_pruning_schedule(
+                                schedule_type=self.schedule_type,
+                                episode=episode,
+                                num_episodes=episodes,
+                                initial_sparsity=self.initial_sparsity,
+                                final_sparsity=self.final_sparsity,
+                                warmup_episodes=self.warmup_episodes,
+                                harmonic_scheduler=self.harmonic_scheduler
+                            )
+                            pruning_type = 'l1' if self.pruning_method == 'gradual_schedule_l1' else 'random'
+                            apply_gradual_schedule_pruning(self.policy.actor, current_sparsity, pruning_type)
+                            
+                            # log sparsity
+                            sparsity = compute_sparsity(self.policy.actor)
+                            train_infos['actor_sparsity'] = sparsity
+                            print(f"Current actor sparsity: {sparsity:.2f}%")
+
+                            # save pruned model
+                            if (episode % self.save_interval == 0 or episode == episodes - 1):
+                                self.save()
+
+                            # eval (pruned model)
+                            if episode % self.eval_interval == 0 and self.use_eval:
+                                self.eval(self.true_total_num_steps)
+
+                    # update network
+                    train_stats = self.train()
+                    train_infos.update(train_stats)
 
                 # insert turn data into buffer
                 self.buffer.chooseinsert(self.turn_share_obs,
@@ -117,11 +152,12 @@ class HanabiRunner(Runner):
                 self.use_share_obs[self.reset_choose] = share_obs[self.reset_choose]
                 self.use_available_actions[self.reset_choose] = available_actions[self.reset_choose]
             
-            # post process
-            total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads           
-            # save model
-            if (episode % self.save_interval == 0 or episode == episodes - 1):
-                self.save()
+            # # post process
+            # total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+
+            # # save model
+            # if (episode % self.save_interval == 0 or episode == episodes - 1):
+            #     self.save()
 
             # log information
             if episode % self.log_interval == 0 and episode > 0:
@@ -148,9 +184,9 @@ class HanabiRunner(Runner):
                 
                 self.log_train(train_infos, self.true_total_num_steps)
 
-            # eval
-            if episode % self.eval_interval == 0 and self.use_eval:
-                self.eval(self.true_total_num_steps)
+            # # eval
+            # if episode % self.eval_interval == 0 and self.use_eval:
+            #     self.eval(self.true_total_num_steps)
 
     def warmup(self):
         # reset env
@@ -306,8 +342,16 @@ class HanabiRunner(Runner):
             wandb.log({'eval_average_score': eval_average_score}, step=total_num_steps)
         else:
             self.writter.add_scalars('eval_average_score', {'eval_average_score': eval_average_score}, total_num_steps)
-
-    
+        
+        # add sparsity to eval info
+        if self.pruning_method != 'none':
+            eval_actor_sparsity = compute_sparsity(self.policy.actor)
+            print(f"eval actor sparsity: {eval_actor_sparsity:.2f}%")
+            if self.use_wandb:
+                wandb.log({'eval_actor_sparsity': eval_actor_sparsity}, step=total_num_steps)
+            else:
+                self.writter.add_scalars('eval_actor_sparsity', {'eval_actor_sparsity': eval_actor_sparsity}, total_num_steps)
+            
     @torch.no_grad()
     def eval_100k(self, eval_games=100000):
         eval_envs = self.eval_envs
