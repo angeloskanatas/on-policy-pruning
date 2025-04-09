@@ -317,6 +317,8 @@ def get_config():
                       help="final sparsity level (0-1)")
     parser.add_argument("--warmup_episodes", type=int, default=0,
                       help="number of warmup episodes before pruning")
+    parser.add_argument("--endlock_episodes", type=int, default=0,
+                      help="episodes with fixed final sparsity at the end")
     parser.add_argument("--prune_interval", type=int, default=5,
                       help="interval for pruning (in episodes)")
     parser.add_argument("--harmonic_base_schedule_type", type=str, default='linear',

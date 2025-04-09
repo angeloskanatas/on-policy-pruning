@@ -56,10 +56,12 @@ class HarmonicSparsityScheduler:
         T_increase_rate,
         base_schedule="linear",
         lock_progress_threshold=0.9,
+        endlock_episodes=100
     ):
         self.total_episodes = total_episodes
         self.warmup_episodes = warmup_episodes
-        self.total_pruning_steps = total_episodes - warmup_episodes
+        self.endlock_episodes = endlock_episodes
+        self.total_pruning_steps = total_episodes - warmup_episodes - endlock_episodes
         self.initial_sparsity = initial_sparsity
         self.final_sparsity = final_sparsity
         self.A0 = A0
@@ -67,13 +69,13 @@ class HarmonicSparsityScheduler:
         self.T0 = T0
         self.T_increase_rate = T_increase_rate
         self.base_schedule = base_schedule
-        self.lock_threshold_episode = int(lock_progress_threshold * total_episodes)
+        self.lock_threshold_episode = int(lock_progress_threshold * (total_episodes - endlock_episodes))
         self.locked = False
 
     def __call__(self, global_episode):
         if global_episode < self.warmup_episodes:
             return 0.0
-        if self.locked:
+        if self.locked or global_episode >= self.total_episodes - self.endlock_episodes:
             return self.final_sparsity
 
         # Progress w.r.t. pruning phase (0 -> 1 after warmup)
@@ -167,12 +169,14 @@ def apply_gradual_schedule_pruning(model, current_sparsity, pruning_type='l1'):
             if f"{param}_mask" in name:
                 prune.remove(module, param)
 
-def get_pruning_schedule(schedule_type, episode, num_episodes, initial_sparsity, final_sparsity, warmup_episodes, harmonic_scheduler=None):
+def get_pruning_schedule(schedule_type, episode, num_episodes, initial_sparsity, final_sparsity, warmup_episodes, endlock_episodes=100, harmonic_scheduler=None):
     """Calculate the target sparsity for the current episode based on the selected schedule."""
     if episode < warmup_episodes:  # warm-up
         return 0.0
+    if episode >= num_episodes - endlock_episodes: # fix sparsity at last episodes
+        return final_sparsity
     
-    progress = (episode - warmup_episodes) / (num_episodes - warmup_episodes)
+    progress = (episode - warmup_episodes) / (num_episodes - warmup_episodes - endlock_episodes)
     if schedule_type == 'linear':
         return initial_sparsity + (final_sparsity - initial_sparsity) * progress
     elif schedule_type == 'cosine':

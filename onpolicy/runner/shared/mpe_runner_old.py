@@ -20,6 +20,7 @@ class MPERunner(Runner):
         self.initial_sparsity = self.all_args.initial_sparsity if hasattr(self.all_args, 'initial_sparsity') else 0.0
         self.final_sparsity = self.all_args.final_sparsity if hasattr(self.all_args, 'final_sparsity') else 0.95
         self.warmup_episodes = self.all_args.warmup_episodes if hasattr(self.all_args, 'warmup_episodes') else 0
+        self.endlock_episodes = self.all_args.endlock_episodes if hasattr(self.all_args, 'endlock_episodes') else 0
         self.prune_interval = self.all_args.prune_interval if hasattr(self.all_args, 'prune_interval') else 5
         self.harmonic_A0 = self.all_args.harmonic_A0 if hasattr(self.all_args, 'harmonic_A0') else 0.1
         self.harmonic_lambda_decay = self.all_args.harmonic_lambda_decay if hasattr(self.all_args, 'harmonic_lambda_decay') else 0.0
@@ -39,7 +40,8 @@ class MPERunner(Runner):
                 T0=self.harmonic_T0,
                 T_increase_rate=self.harmonic_T_increase_rate,
                 base_schedule=self.harmonic_base_schedule_type,
-                lock_progress_threshold=0.9
+                lock_progress_threshold=0.9,
+                endlock_episodes=self.endlock_episodes
             )
         else:
             self.harmonic_scheduler = None
@@ -80,6 +82,7 @@ class MPERunner(Runner):
                         initial_sparsity=self.initial_sparsity,
                         final_sparsity=self.final_sparsity,
                         warmup_episodes=self.warmup_episodes,
+                        endlock_episodes=self.endlock_episodes,
                         harmonic_scheduler=self.harmonic_scheduler
                     )
                     pruning_type = 'l1' if self.pruning_method == 'gradual_schedule_l1' else 'random'

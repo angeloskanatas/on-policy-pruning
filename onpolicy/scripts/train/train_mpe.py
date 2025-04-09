@@ -115,6 +115,7 @@ def main(args):
                          str(all_args.pruning_method) + "_" +
                          (str(all_args.schedule_type) + "_" if hasattr(all_args, 'schedule_type') and all_args.pruning_method != "none" else "") +
                          ("pi" + str(all_args.prune_interval) + "_" if hasattr(all_args, 'prune_interval') and all_args.pruning_method != "none" else "") +
+                         ("el" + str(all_args.endlock_episodes) + "_" if hasattr(all_args, 'endlock_episodes') and all_args.pruning_method != "none" and all_args.endlock_episodes > 0 else "") +
                          str(all_args.experiment_name) +
                          "_seed" + str(all_args.seed),
                          group=all_args.scenario_name,
