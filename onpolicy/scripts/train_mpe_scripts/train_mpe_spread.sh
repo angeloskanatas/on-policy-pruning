@@ -4,7 +4,7 @@ scenario="simple_spread"
 num_landmarks=3
 num_agents=3
 algo="rmappo" # or "mappo", "ippo", "happo", "hatrpo"
-exp="mpe_spread"
+exp="mpe_spread_rmappo_sep"
 seed_start=180
 num_seeds=5
 
@@ -32,7 +32,7 @@ for pruning_method in $pruning_methods; do
                 --n_training_threads 1 --n_rollout_threads 128 --num_mini_batch 1 --episode_length 25 --num_env_steps 20000000 \
                 --ppo_epoch 10 --use_ReLU --gain 0.01 --lr 7e-4 --critic_lr 7e-4 --wandb_name "akanatas" --user_name "MARL-pruning" --share_policy \
                 --pruning_method ${pruning_method} --schedule_type ${schedule_type} --initial_sparsity 0.0 --final_sparsity 0.95 \
-                --warmup_episodes 0 --prune_interval 5
+                --warmup_episodes 0 --prune_interval 10 --endlock_episodes 1000
             done
         done
     fi
@@ -45,14 +45,14 @@ CUDA_VISIBLE_DEVICES=0 python ../train/train_mpe.py --env_name ${env} --algorith
 --n_training_threads 1 --n_rollout_threads 128 --num_mini_batch 1 --episode_length 25 --num_env_steps 20000000 \
 --ppo_epoch 10 --use_ReLU --gain 0.01 --lr 7e-4 --critic_lr 7e-4 --wandb_name "akanatas" --user_name "MARL-pruning" --share_policy \
 --pruning_method "gradual_schedule_random" --schedule_type "linear" --initial_sparsity 0.0 --final_sparsity 0.95 \
---warmup_episodes 0 --prune_interval 5
+--warmup_episodes 0 --prune_interval 10 --endlock_episodes 1000
 
 # ------------------------------------------
 # HARMONIC PRUNING ONLY
 # ------------------------------------------
 
 echo "Running harmonic pruning experiments..."
-exp="mpe_spread_harmonic"
+exp="mpe_spread_harmonic_rmappo_sep"
 
 pruning_method="gradual_schedule_l1"
 schedule_type="harmonic"
@@ -76,7 +76,7 @@ for seed in $(seq $seed_start $(($seed_start + $num_seeds - 1))); do
     --ppo_epoch 10 --use_ReLU --gain 0.01 --lr 7e-4 --critic_lr 7e-4 \
     --wandb_name "akanatas" --user_name "MARL-pruning" --share_policy \
     --pruning_method ${pruning_method} --schedule_type ${schedule_type} \
-    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5 \
+    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 10  --endlock_episodes 1000 \
     --harmonic_base_schedule_type ${harmonic_base_schedule_type} \
     --harmonic_A0 ${harmonic_A0} \
     --harmonic_lambda_decay ${harmonic_lambda_decay} \

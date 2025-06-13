@@ -9,7 +9,7 @@ num_seeds=5
 ulimit -n 22222
 
 # pruning methods and schedules
-pruning_methods="none gradual_schedule_l1"
+pruning_methods="gradual_schedule_l1 none"
 schedule_types="linear cyclical polynomial"
 
 echo "env is ${env}, hanabi game is ${hanabi}, algo is ${algo}, exp is ${exp}, num seeds is ${num_seeds}"
@@ -40,7 +40,7 @@ for pruning_method in $pruning_methods; do
                 --wandb_name "akanatas" --user_name "MARL-pruning" \
                 --hidden_size 512 --layer_N 2 --entropy_coef 0.015 \
                 --pruning_method ${pruning_method} --schedule_type ${schedule_type} \
-                --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5
+                --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5 --endlock_episodes 100
             done
         done
     fi
@@ -57,7 +57,7 @@ CUDA_VISIBLE_DEVICES=0 python train/train_hanabi_forward.py \
     --wandb_name "akanatas" --user_name "MARL-pruning" \
     --hidden_size 512 --layer_N 2 --entropy_coef 0.015 \
     --pruning_method "gradual_schedule_random" --schedule_type "linear" \
-    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5
+    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5 --endlock_episodes 100
 
 # ------------------------------------------
 # HARMONIC PRUNING ONLY
@@ -89,7 +89,7 @@ for seed in $(seq $seed_start $(($seed_start + $num_seeds - 1))); do
     --wandb_name "akanatas" --user_name "MARL-pruning" \
     --hidden_size 512 --layer_N 2 --entropy_coef 0.015 \
     --pruning_method ${pruning_method} --schedule_type ${schedule_type} \
-    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5 \
+    --initial_sparsity 0.0 --final_sparsity 0.95 --warmup_episodes 0 --prune_interval 5 --endlock_episodes 100 \
     --harmonic_base_schedule_type ${harmonic_base_schedule_type} \
     --harmonic_A0 ${harmonic_A0} \
     --harmonic_lambda_decay ${harmonic_lambda_decay} \
